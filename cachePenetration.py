@@ -2,98 +2,141 @@ import sys
 import array
 import csv
 import math
+import hashlib
 
 # Probability of false positives
 p = 0.0000001
 
 
-def calculate_n(fileDir):
+def calculate_n(file_path):
     """
     Calculate the number of emails in the database.
 
-    :param fileDir: The path to the file containing the emails.
+    :param file_path: The path to the file containing the emails.
     :return: The number of emails in the database.
     """
-    with open(fileDir, 'r') as file:
+    with open(file_path, 'r') as file:
         reader = csv.reader(file)
-        next(reader)
+        next(reader)  # Skip header
         return sum(1 for _ in reader)
 
 
-def main():
+def make_bit_array(bit_size, fill=0):
     """
-    Main function to run the bloom filter algorithm to check if an email is in the database or not, using the `Bloom Filter` algorithm.
+    Create a bit array of the given size.
 
-    :return: None
+    :param bit_size: The size of the bit array.
+    :param fill: Initial fill value (0 or 1).
+    :return: Bit array.
     """
+    int_size = (bit_size + 31) // 32
+    fill_value = 0xFFFFFFFF if fill else 0
+    bit_array = array.array('I', (fill_value,) * int_size)
+    return bit_array
+
+
+def test_bit(array_name, bit_num):
+    """
+    Test if the bit at 'bit_num' is set.
+
+    :param array_name: Bit array.
+    :param bit_num: Bit index.
+    :return: True if set, else False.
+    """
+    record = bit_num >> 5
+    offset = bit_num & 31
+    mask = 1 << offset
+    return (array_name[record] & mask) != 0
+
+
+def set_bit(array_name, bit_num):
+    """
+    Set the bit at 'bit_num'.
+
+    :param array_name: Bit array.
+    :param bit_num: Bit index.
+    """
+    record = bit_num >> 5
+    offset = bit_num & 31
+    mask = 1 << offset
+    array_name[record] |= mask
+
+
+class BloomFilter:
+    def __init__(self, n_hashes, size):
+        self.n_hashes = n_hashes
+        self.size = size
+        self.bit_array = make_bit_array(size)
+
+    def hash_function(self, item, seed):
+        """
+        Hash function using SHA256 with seed.
+
+        :param item: Item to hash.
+        :param seed: Seed for the hash.
+        :return: Hash value.
+        """
+        hash_obj = hashlib.sha256(f"{seed}:{item}".encode())
+        return int(hash_obj.hexdigest(), 16)
+
+    def add(self, item):
+        """
+        Add an item to the Bloom Filter.
+
+        :param item: Item to add.
+        """
+        for seed in range(self.n_hashes):
+            result = self.hash_function(item, seed)
+            set_bit(self.bit_array, result % self.size)
+
+    def check(self, item):
+        """
+        Check if an item is in the Bloom Filter.
+
+        :param item: Item to check.
+        :return: True if probably in, False if definitely not.
+        """
+        for seed in range(self.n_hashes):
+            result = self.hash_function(item, seed)
+            if not test_bit(self.bit_array, result % self.size):
+                return False
+        return True
+
+
+def main():
     if len(sys.argv) != 3:
         return
 
-    # Calculate n
-    n = calculate_n(sys.argv[1])
+    input_file = sys.argv[1]
+    check_file = sys.argv[2]
 
-    # Calculate m
+    # Calculate the number of items in the input database
+    n = calculate_n(input_file)
+
+    # Calculate optimal Bloom Filter parameters
     m = math.ceil((n * math.log(p)) / math.log(1 / pow(2, math.log(2))))
-
-    # Calculate k
     k = round((m / n) * math.log(2))
 
-    # Number of Hashing functions
-    NUM_OF_HASHES = k
+    # Create a Bloom Filter
+    bloom = BloomFilter(k, m)
 
-    # Number of bits in bloom filter
-    NUM_OF_BITS = m
+    # Add emails from the input file to the Bloom Filter
+    with open(input_file, 'r') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        for row in reader:
+            email = row[0]
+            bloom.add(email)
 
-    class BloomFilter:
-        def __init__(self, nHash, size):
-            self.nHash = nHash
-
-            # size of the bloom filter
-            self.size = size
-
-            # determined size of array
-            int_size = (size + 31) // 32
-            self.bit_array = array.array('I', [0] * int_size)
-
-        def hashFunction(self, item, seed):
-            return hash((seed, item))
-
-        def add(self, item):
-            for i in range(0, self.nHash, 1):
-                hashingIndex = self.hashFunction(item, i) % self.size
-                self.bit_array[hashingIndex // 32] |= 1 << (hashingIndex % 32)
-
-        def CheckDataBase(self, item):
-            for i in range(self.nHash):
-                index = self.hashFunction(item, i) % self.size
-                if not (self.bit_array[index // 32] & (1 << (index % 32))):
-                    return "Not in the DB"
-            return "Probably in the DB"
-
-    def createCheck(file_path):
-        dataBaseCheck = []
-        with open(file_path, 'r') as file:
-            reader = csv.reader(file)
-            next(reader)
-            for row in reader:
-                email = row[0].strip()
-                dataBaseCheck.append(email)
-        return dataBaseCheck
-
-    def CheckEmails(dataBase, dataBaseCheck, bloomFilter):
-        for email in dataBase:
-            bloomFilter.add(email)
-
-        for email in dataBaseCheck:
-            print(email + "," + bloomFilter.CheckDataBase(email))
-
-    file_path = sys.argv[1]
-    check_path = sys.argv[2]
-
-    dataBase = createCheck(file_path)
-    dataCheck = createCheck(check_path)
-    bloomFilter = BloomFilter(NUM_OF_HASHES, NUM_OF_BITS)
-    CheckEmails(dataBase, dataCheck, bloomFilter)
+    # Check emails from the check file against the Bloom Filter
+    with open(check_file, 'r') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        for row in reader:
+            email = row[0]
+            result = "Probably in the DB" if bloom.check(
+                email) else "Not in the DB"
+            print(f"{email},{result}")
 
 
 if __name__ == "__main__":
