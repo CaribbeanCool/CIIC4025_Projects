@@ -6,26 +6,40 @@ MISMATCH_SCORE = -1
 GAP_PENALTY = -2
 
 
-def needleman_wunsch(seq1, seq2):
+def needleman_wunsch(sequence1, sequence2):
+    """
+    Perform Needleman-Wunsch algorithm on two sequences.
 
-    score_matrix = [[0] * (len(seq2) + 1) for _ in range(len(seq1) + 1)]
+    parameters
+    - sequence1 (str): The first sequence.
+    - sequence2 (str): The second sequence.
 
-    traceback_matrix = [[''] * (len(seq2) + 1) for _ in range(len(seq1) + 1)]
+    Returns
+    - aligned_seq1 (str): The aligned first sequence.
+    - aligned_seq2 (str): The aligned second sequence.
+    - alignment_score (int): The alignment score.
+    """
+    score_matrix = [[0] * (len(sequence2) + 1)
+                    for _ in range(len(sequence1) + 1)]
+
+    traceback_matrix = [[''] * (len(sequence2) + 1)
+                        for _ in range(len(sequence1) + 1)]
 
     # First Line and Column of matrices
-    for i in range(1, len(seq1) + 1):
+    for i in range(1, len(sequence1) + 1):
         score_matrix[i][0] = GAP_PENALTY * i
         traceback_matrix[i][0] = 'U'  # Up
 
-    for j in range(1, len(seq2) + 1):
+    for j in range(1, len(sequence2) + 1):
         score_matrix[0][j] = GAP_PENALTY * j
         traceback_matrix[0][j] = 'L'  # Left
 
     # Fill in the matrices
-    for i in range(1, len(seq1) + 1):
-        for j in range(1, len(seq2) + 1):
+    for i in range(1, len(sequence1) + 1):
+        for j in range(1, len(sequence2) + 1):
             match_score = score_matrix[i-1][j-1] + \
-                (MATCH_SCORE if seq1[i-1] == seq2[j-1] else MISMATCH_SCORE)
+                (MATCH_SCORE if sequence1[i-1] ==
+                 sequence2[j-1] else MISMATCH_SCORE)
             delete_score = score_matrix[i-1][j] + GAP_PENALTY
             insert_score = score_matrix[i][j-1] + GAP_PENALTY
             max_score = max(match_score, delete_score, insert_score)
@@ -42,31 +56,31 @@ def needleman_wunsch(seq1, seq2):
     # Perform traceback and record the route
     aligned_seq1 = ''
     aligned_seq2 = ''
-    route = ''
-    i, j = len(seq1), len(seq2)
+    _route = ''
+    i, j = len(sequence1), len(sequence2)
 
     while i > 0 or j > 0:
         direction = traceback_matrix[i][j]
         move = direction[-1] if direction else ''
         if move == 'D':
-            aligned_seq1 = seq1[i-1] + aligned_seq1
-            aligned_seq2 = seq2[j-1] + aligned_seq2
+            aligned_seq1 = sequence1[i-1] + aligned_seq1
+            aligned_seq2 = sequence2[j-1] + aligned_seq2
             i -= 1
             j -= 1
-            route += 'D'
+            _route += 'D'
         elif move == 'U':
-            aligned_seq1 = seq1[i-1] + aligned_seq1
+            aligned_seq1 = sequence1[i-1] + aligned_seq1
             aligned_seq2 = '-' + aligned_seq2
             i -= 1
-            route += 'U'
+            _route += 'U'
         elif move == 'L':
             aligned_seq1 = '-' + aligned_seq1
-            aligned_seq2 = seq2[j-1] + aligned_seq2
+            aligned_seq2 = sequence2[j-1] + aligned_seq2
             j -= 1
-            route += 'L'
+            _route += 'L'
 
     # Reverse the route to match reading direction
-    route = route[::-1]
+    _route = _route[::-1]
 
     # Calculate score
     alignment_score = 0
@@ -79,10 +93,17 @@ def needleman_wunsch(seq1, seq2):
         else:
             alignment_score += MISMATCH_SCORE
 
-    return aligned_seq1, aligned_seq2, alignment_score, route
+    return aligned_seq1, aligned_seq2, alignment_score, _route
 
 
 def main():
+    """
+    Read the input file and perform Needleman-Wunsch algorithm on each pair of sequences.
+
+    The input file should be a CSV file with two columns, each containing a sequence.
+
+    The output will be the aligned sequences and the alignment score.
+    """
     if len(sys.argv) > 1:
         file_name = sys.argv[1]
         with open(file_name, newline='') as csvfile:
@@ -90,7 +111,7 @@ def main():
             next(reader)
             for row in reader:
                 seq1, seq2 = row
-                aligned_seq1, aligned_seq2, alignment_score, route = needleman_wunsch(
+                aligned_seq1, aligned_seq2, alignment_score, _route = needleman_wunsch(
                     seq1, seq2)
                 print(f"{aligned_seq1} {aligned_seq2} {alignment_score}")
 
